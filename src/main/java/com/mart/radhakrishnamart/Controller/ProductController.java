@@ -18,6 +18,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.azure.storage.blob.BlobClient;
+import com.azure.storage.blob.BlobContainerClient;
+import com.azure.storage.blob.BlobServiceClient;
 import com.mart.radhakrishnamart.Repository.CategoryRepository;
 import com.mart.radhakrishnamart.Repository.ProductRepository;
 import com.mart.radhakrishnamart.To.Product;
@@ -39,7 +42,15 @@ public class ProductController {
 
 	@Autowired
 	ProductRepository prdRepository;
+	private final BlobServiceClient blobServiceClient;
+   
 
+	
+    @Autowired
+    public ProductController(BlobServiceClient blobServiceClient, ProductRepository prdRepository) {
+        this.blobServiceClient = blobServiceClient;
+        this.prdRepository = prdRepository;
+    }
 	@Autowired
 	CategoryRepository categoryRepository;
 
@@ -57,8 +68,7 @@ public class ProductController {
 
 	}
 
-	   @Value("${file.upload-dir}") 
-	    private String uploadDir;
+	  
 
 	   @GetMapping("/name/{name}")
 		ResponseEntity<Product>  byName(@PathVariable String name){
@@ -68,70 +78,68 @@ public class ProductController {
 			
 		}
 	   
-	   
+	   	   
 	   @GetMapping("/images/product_images/{imageName:.+}")
-	    public ResponseEntity<Resource> getImage(@PathVariable String imageName) {
-	        try {
-	            // Load the image file as a Resource
-	            Path imagePath = Paths.get(uploadDir, "product_images").resolve(imageName);
-	            Resource resource = new UrlResource(imagePath.toUri());
+	   public ResponseEntity<Resource> getImage(@PathVariable String imageName) {
+	       try {
+	           // Construct the URL for the image in Azure Blob Storage
+	           String blobUrl = "https://martimages.blob.core.windows.net/imagesmart/" + imageName;
 
-	            // Check if the file exists and is readable
-	            if (!resource.exists() || !resource.isReadable()) {
-	                return new ResponseEntity<>(HttpStatus.NOT_FOUND);
-	            }
+	           // Create a Resource object with the image URL
+	           UrlResource resource = new UrlResource(blobUrl);
 
-	            return ResponseEntity.ok()
-	                                 .contentType(MediaType.IMAGE_JPEG) // Set appropriate content type
-	                                 .body(resource);
-	        } catch (MalformedURLException e) {
-	            // Handle invalid URL
-	            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-	        } catch (Exception e) {
-	            // Handle other exceptions
-	            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-	        }
-	    }
+	           // Check if the file exists and is readable
+	           if (!resource.exists() || !resource.isReadable()) {
+	               return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+	           }
+
+	           return ResponseEntity.ok()
+	                                .contentType(MediaType.IMAGE_JPEG) // Set appropriate content type
+	                                .body(resource);
+	       } catch (MalformedURLException e) {
+	           // Handle invalid URL
+	           return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+	       } catch (Exception e) {
+	           // Handle other exceptions
+	           return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+	       }
+	   }
 	   
-	    @PostMapping("/add")
-	    public ResponseEntity<Product> createProduct(@RequestParam("name") String name, 
-	                                                 @RequestParam("price") double price,
-	                                                 @RequestParam("images") List<MultipartFile> images, 
-	                                                 @RequestParam("description") String description,
-	                                                 @RequestParam("category_id") Long categoryId) throws Exception {
-	        Product product = new Product();
-	        product.setName(name);
-	        product.setPrice(price);
-	        
-	        product.setDiscription(description);
-	        product.setCategory(categoryRepository.findById(categoryId).orElse(null));
+	   @PostMapping("/add")
+	   public ResponseEntity<Product> createProduct(@RequestParam("name") String name, 
+	                                                @RequestParam("price") double price,
+	                                                @RequestParam("images") List<MultipartFile> images, 
+	                                                @RequestParam("description") String description,
+	                                                @RequestParam("category_id") Long categoryId) throws Exception {
+	       try {
+	           Product product = new Product();
+	           product.setName(name);
+	           product.setPrice(price);
+	           product.setDiscription(description);
+	           product.setCategory(categoryRepository.findById(categoryId).orElse(null));
 
-	        if (images != null && !images.isEmpty()) {
-	            List<String> imagePaths = new ArrayList<>();
-	            for (MultipartFile img : images) {
-	                // Define the directory path where you want to save the images
-	                String directoryPath = uploadDir + File.separator + "product_images";
+	           if (images != null && !images.isEmpty()) {
+	               List<String> imageUrls = new ArrayList<>();
+	               for (MultipartFile img : images) {
+	                   // Upload image to Azure Blob Storage
+	                   BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient("imagesmart");
+	                   String imageName = UUID.randomUUID().toString(); // Generate unique image name
+	                   BlobClient blobClient = containerClient.getBlobClient(imageName);
+	                   blobClient.upload(img.getInputStream(), img.getSize(), true);
 
-	                // Create the directory if it doesn't exist
-	                File directory = new File(directoryPath);
-	                if (!directory.exists()) {
-	                    directory.mkdirs();
-	                }
+	                   // Add the image URL to the list
+	                   String imageUrl = blobClient.getBlobUrl();
+	                   imageUrls.add(imageUrl);
+	               }
+	               product.setImages(imageUrls);
+	           }
 
-	                // Save the image to the directory
-	                Path filePath = Paths.get(directoryPath, img.getOriginalFilename());
-	                Files.copy(img.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
-
-	                // Add the image path to the list
-	                String imagePath = "/product_images/" + img.getOriginalFilename();
-	                imagePaths.add(imagePath);
-	            }
-	            product.setImages(imagePaths);
-	        }
-
-	        Product savedProduct = prdRepository.save(product);
-	        return new ResponseEntity<>(savedProduct, HttpStatus.CREATED);
-	    }
+	           Product savedProduct = prdRepository.save(product);
+	           return new ResponseEntity<>(savedProduct, HttpStatus.CREATED);
+	       } catch (Exception e) {
+	           return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+	       }
+	   }
 
 	@PutMapping("/{id}")
 	public ResponseEntity<Product> updateProduct(@PathVariable Long id,

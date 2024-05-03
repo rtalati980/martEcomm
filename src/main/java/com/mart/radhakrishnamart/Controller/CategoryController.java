@@ -1,5 +1,6 @@
 package com.mart.radhakrishnamart.Controller;
 
+import com.azure.storage.blob.*;
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -43,66 +44,96 @@ import java.nio.file.StandardCopyOption;
 @RestController
 @RequestMapping("/category/api")
 public class CategoryController {
+
+	private final BlobServiceClient blobServiceClient;
+    private final CategoryRepository categoryRepository;
+
 	
-	@Autowired
-	CategoryRepository categoryRepository;
+    @Autowired
+    public CategoryController(BlobServiceClient blobServiceClient, CategoryRepository categoryRepository) {
+        this.blobServiceClient = blobServiceClient;
+        this.categoryRepository = categoryRepository;
+    }
+	
+	
 	
 	 @Autowired
 	  private ResourceLoader resourceLoader;
 	 
-	 @Value("${file.upload-dir}") // This will inject the directory path from application.properties
-	    private String uploadDir;
-
-	
+	// @Value("${file.upload-dir}") // This will inject the directory path from application.properties
+	//    private String uploadDir;   
+	 
+	/*
+	 * @GetMapping("/images/{imageName:.+}") public ResponseEntity<Resource>
+	 * getImage(@PathVariable String imageName) { try { // Load the image file as a
+	 * Resource Path imagePath = Paths.get(uploadDir, "images").resolve(imageName);
+	 * Resource resource = new UrlResource(imagePath.toUri());
+	 * 
+	 * // Check if the file exists and is readable if (!resource.exists() ||
+	 * !resource.isReadable()) { return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+	 * }
+	 * 
+	 * return ResponseEntity.ok() .contentType(MediaType.IMAGE_JPEG) // Set
+	 * appropriate content type .body(resource); } catch (MalformedURLException e) {
+	 * // Handle invalid URL return new
+	 * ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR); } catch (Exception e) {
+	 * // Handle other exceptions return new
+	 * ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR); } }
+	 */
 	 @GetMapping("/images/{imageName:.+}")
 	    public ResponseEntity<Resource> getImage(@PathVariable String imageName) {
-	        try {
-	            // Load the image file as a Resource
-	            Path imagePath = Paths.get(uploadDir, "images").resolve(imageName);
-	            Resource resource = new UrlResource(imagePath.toUri());
+		 try {
+		        // Construct the URL for the image in Azure Blob Storage
+		        String blobUrl = "https://martimages.blob.core.windows.net/imagesmart/" + imageName;
 
-	            // Check if the file exists and is readable
-	            if (!resource.exists() || !resource.isReadable()) {
-	                return new ResponseEntity<>(HttpStatus.NOT_FOUND);
-	            }
+		        // Create a Resource object with the image URL
+		        UrlResource resource = new UrlResource(blobUrl);
 
-	            return ResponseEntity.ok()
-	                                 .contentType(MediaType.IMAGE_JPEG) // Set appropriate content type
-	                                 .body(resource);
-	        } catch (MalformedURLException e) {
-	            // Handle invalid URL
-	            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-	        } catch (Exception e) {
-	            // Handle other exceptions
-	            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-	        }
-	    }
-	
+		        // Check if the file exists and is readable
+		        if (!resource.exists() || !resource.isReadable()) {
+		            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+		        }
+
+		        return ResponseEntity.ok()
+		                             .contentType(MediaType.IMAGE_JPEG) // Set appropriate content type
+		                             .body(resource);
+		    } catch (MalformedURLException e) {
+		        // Handle invalid URL
+		        return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+		    } catch (Exception e) {
+		        // Handle other exceptions
+		        return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+		    }
+		}
+	 
+	 
 
 
 	 
-	@PostMapping("/save")
-	public ResponseEntity<Category> saveCat(@RequestParam ("name") String name, @RequestParam("images") MultipartFile images) throws IOException{
-		Category category = new Category();
-	     category.setName(name);
-	     if (images != null && !images.isEmpty()) {
-	            // Define the directory path where you want to save the images
-	            String directoryPath = uploadDir + File.separator + "images";
-	            File directory = new File(directoryPath);
-	            if (!directory.exists()) {
-	                directory.mkdirs();
+	 @PostMapping("/save")
+	    public ResponseEntity<Category> saveCat(@RequestParam("name") String name, @RequestParam("images") MultipartFile images) throws IOException {
+	        try {
+	            Category category = new Category();
+	            category.setName(name);
+
+	            if (images != null && !images.isEmpty()) {
+	                // Upload image to Azure Blob Storage
+	                BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient("imagesmart");
+	                BlobClient blobClient = containerClient.getBlobClient(images.getOriginalFilename());
+	                blobClient.upload(images.getInputStream(), images.getSize(), true);
+
+	                // Set the image URL in the category object
+	                category.setImgPath(blobClient.getBlobUrl());
 	            }
 	            
-	            Path filePath = Paths.get(directoryPath, images.getOriginalFilename());
-	            Files.copy(images.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+	            System.out.print( "Path to image"  +  category.getImgPath());
 
-	            // Set the image path in the category object
-	            category.setImgPath("/images/" + images.getOriginalFilename());
+	            Category savedCat = categoryRepository.save(category);
+	            return new ResponseEntity<>(savedCat, HttpStatus.CREATED);
+	        } catch (Exception e) {
+	            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
 	        }
-	     
-		Category savedCat =categoryRepository.save(category);
-		return new ResponseEntity<>(savedCat, HttpStatus.CREATED);
-	}
+	    }
 	
 
     // Create the directory if it doesn't exist
