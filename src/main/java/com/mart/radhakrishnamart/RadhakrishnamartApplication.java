@@ -10,4 +10,5 @@ public class RadhakrishnamartApplication {
 		SpringApplication.run(RadhakrishnamartApplication.class, args);
 	}
 
+	
 }
