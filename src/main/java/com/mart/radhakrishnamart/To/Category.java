@@ -12,6 +12,7 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 
 
@@ -29,9 +30,9 @@ public class Category {
 
 	private String imgPath;
 
-	@JsonManagedReference
-	@OneToMany(mappedBy = "category", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-	private List<Product> products;
+	@OneToMany(mappedBy = "category", fetch = FetchType.LAZY)
+    @JsonIgnoreProperties("category") // Ignore the category field in Product during serialization
+    private List<Product> products;
 
 	public Category() {
 		super();

@@ -5,6 +5,7 @@ package com.mart.radhakrishnamart.To;
 
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.List;
 
@@ -40,10 +41,11 @@ public class Product {
 	@ElementCollection
 	private List<String> images;
 	
-	@JsonBackReference
-	@ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "catid")
+	@ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "category_id")
+	 @JsonIgnoreProperties("products")
     private Category category;
+
 	
 	
 	public Product() {

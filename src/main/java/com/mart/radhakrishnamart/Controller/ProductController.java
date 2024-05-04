@@ -59,15 +59,15 @@ public class ProductController {
 		List<Product> prd = prdRepository.findAll();
 		return new ResponseEntity<>(prd, HttpStatus.OK);
 	}
-
 	@GetMapping("/id/{id}")
-	ResponseEntity<Product> getById(@PathVariable long id) {
-		Optional<Product> productOptional = prdRepository.findById(id);
-		return productOptional.map(product -> new ResponseEntity<>(product, HttpStatus.OK))
-				.orElseGet(() -> new ResponseEntity<>(HttpStatus.NOT_FOUND));
-
+	public ResponseEntity<Product> byName(@PathVariable Long id) {
+	    Optional<Product> productOptional = prdRepository.findById(id);
+	    if (productOptional.isPresent()) {
+	        return new ResponseEntity<>(productOptional.get(), HttpStatus.OK);
+	    } else {
+	        return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+	    }
 	}
-
 	  
 
 	   @GetMapping("/name/{name}")
